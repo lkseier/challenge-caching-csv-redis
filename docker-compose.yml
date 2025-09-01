@@ -1,0 +1,53 @@
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: flight_cache_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+    networks:
+      - flight_network
+
+  app:
+    build: .
+    container_name: flight_analyzer
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - CSV_PATH=/app/data/flights.csv
+      - CACHE_TTL=60
+    networks:
+      - flight_network
+    command: python main.py
+
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: redis_gui
+    depends_on:
+      - redis
+    ports:
+      - "8081:8081"
+    environment:
+      - REDIS_HOSTS=local:redis:6379
+    networks:
+      - flight_network
+
+volumes:
+  redis_data:
+
+networks:
+  flight_network:
+    driver: bridge
